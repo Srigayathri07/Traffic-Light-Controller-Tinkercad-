@@ -1,0 +1,147 @@
+//c
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+// LCDs assigned to each direction
+LiquidCrystal_I2C lcdNorth(0x27, 16, 2);
+LiquidCrystal_I2C lcdEast(0x26, 16, 2);
+LiquidCrystal_I2C lcdSouth(0x25, 16, 2);
+LiquidCrystal_I2C lcdWest(0x24, 16, 2);
+
+// Traffic light pins for 4 directions
+int red[] = {3, 6, 9, 12};    // Red LEDs
+int yellow[] = {4, 7, 10, 13}; // Yellow LEDs
+int green[] = {5, 8, 11, 2};   // Green LEDs
+
+// Timing for the signal phases
+int yellowDuration = 5000;  // Yellow for 5 seconds
+int greenDuration = 10000;  // Green for 10 seconds
+
+unsigned long previousMillis[4] = {0, 0, 0, 0}; // To track last time signal was updated for each lane
+unsigned long cycleStartTime[4] = {0, 0, 0, 0}; // To track cycle start time for each lane
+int currentLane = 0;  // Start with the first lane (North)
+int totalLanes = 4;   // Total lanes
+
+void setup() {
+    Wire.begin();
+
+    // Initialize all LCDs
+    lcdNorth.init(); lcdNorth.backlight();
+    lcdEast.init(); lcdEast.backlight();
+    lcdSouth.init(); lcdSouth.backlight();
+    lcdWest.init(); lcdWest.backlight();
+
+    // Initialize LED pins
+    for (int i = 0; i < totalLanes; i++) {
+        pinMode(red[i], OUTPUT);
+        pinMode(yellow[i], OUTPUT);
+        pinMode(green[i], OUTPUT);
+    }
+
+    // Initially set all lanes to Red
+    setAllLanesToRed();
+}
+
+void loop() {
+    unsigned long currentMillis = millis(); // Get current time in milliseconds
+
+    // Handle lane transitions based on time
+    for (int lane = 0; lane < totalLanes; lane++) {
+        unsigned long timeSinceCycleStart = currentMillis - cycleStartTime[lane];
+
+        // If the current lane is still in its Green or Yellow phase, we continue
+        if (timeSinceCycleStart < greenDuration + yellowDuration) {
+            continue;
+        }
+
+        // Update the lane's signal (Yellow -> Green -> Red)
+        updateLane(lane);
+
+        // Save the current time for this lane
+        cycleStartTime[lane] = currentMillis;
+
+        // Move to the next lane (cyclically)
+        currentLane = (currentLane + 1) % totalLanes;
+    }
+}
+
+// Function to update each lane's signal (Red -> Yellow -> Green -> Red)
+void updateLane(int lane) {
+    // Step 1: Set current lane to Red initially (after the previous cycle ends)
+    digitalWrite(red[lane], HIGH);
+    digitalWrite(yellow[lane], LOW);
+    digitalWrite(green[lane], LOW);
+    updateLCD(lane, "Red - STOP");
+
+    // Step 2: Set current lane to Yellow
+    digitalWrite(red[lane], LOW);  // Ensure it's not Red during Yellow
+    digitalWrite(yellow[lane], HIGH);
+    updateLCD(lane, "Yellow - READY");
+
+    // Wait for 5 seconds (Yellow phase)
+    delay(yellowDuration);
+
+    // Step 3: Set current lane to Green
+    digitalWrite(yellow[lane], LOW);  // Turn off Yellow
+    digitalWrite(green[lane], HIGH);
+    updateLCD(lane, "Green - GO");
+
+    // Wait for 10 seconds (Green phase)
+    delay(greenDuration);
+
+    // Step 4: Set current lane to Red
+    digitalWrite(green[lane], LOW);
+    digitalWrite(red[lane], HIGH);
+    updateLCD(lane, "Red - STOP");
+
+    // Ensure all other lanes stay Red
+    for (int i = 0; i < totalLanes; i++) {
+        if (i != lane) {
+            digitalWrite(red[i], HIGH);
+            digitalWrite(yellow[i], LOW);
+            digitalWrite(green[i], LOW);
+            updateLCD(i, "Red - STOP");
+        }
+    }
+}
+
+// Function to set all lanes to Red initially
+void setAllLanesToRed() {
+    for (int i = 0; i < totalLanes; i++) {
+        digitalWrite(red[i], HIGH);
+        digitalWrite(yellow[i], LOW);
+        digitalWrite(green[i], LOW);
+    }
+    // Display the status for all lanes as "Red"
+    updateLCD(0, "Red - STOP");
+    updateLCD(1, "Red - STOP");
+    updateLCD(2, "Red - STOP");
+    updateLCD(3, "Red - STOP");
+}
+
+// Function to update LCD for respective directions
+void updateLCD(int lcdNum, String text) {
+    switch (lcdNum) {
+        case 0:
+            lcdNorth.clear();
+            lcdNorth.setCursor(0, 0);
+            lcdNorth.print(text);
+            break;
+        case 1:
+            lcdEast.clear();
+            lcdEast.setCursor(0, 0);
+            lcdEast.print(text);
+            break;
+        case 2:
+            lcdSouth.clear();
+            lcdSouth.setCursor(0, 0);
+            lcdSouth.print(text);
+            break;
+        case 3:
+            lcdWest.clear();
+            lcdWest.setCursor(0, 0);
+            lcdWest.print(text);
+            break;
+    }
+}
+
